@@ -1,0 +1,136 @@
+version: "3.4"
+services:
+  postgres_db:
+    image: postgres:latest
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/structure.sql:/docker-entrypoint-initdb.d/structure.sql
+    ports:
+      - "5432:5432"
+    networks:
+      mqtt_network:
+
+
+  pgadmin:
+    container_name: pgadmin4
+    image: dpage/pgadmin4
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      mqtt_network:
+
+  fake_client:
+    container_name: fakeclient
+    build: fakeclient
+    depends_on:
+      - mqtt
+      - postgres_db
+   # restart: always
+    environment:
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: 1883
+      MQTT_TOPIC: "agent"
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+      POSTGRES_HOST: postgres_db
+      POSTGRES_PORT: 5432
+      DELAY: 0.1
+    logging:
+        driver: none
+#    ports:
+#      - "8000:8000"
+    networks:
+      mqtt_network:
+
+  fastapi:
+    container_name: agent_store
+    build: .
+    depends_on:
+      - mqtt
+      - postgres_db
+    restart: always
+    environment:
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: 1883
+      MQTT_TOPIC: "agent"
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+      POSTGRES_HOST: postgres_db
+      POSTGRES_PORT: 5432
+      DELAY: 0.1
+    ports:
+      - "8000:8000"
+    networks:
+      mqtt_network:
+
+  edge_dataanalyzer:
+    container_name: edge
+    build: edge
+    depends_on:
+      - mqtt
+      - postgres_db
+      - fake_client
+    restart: always
+    environment:
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: 1883
+      MQTT_TOPIC: "agent"
+#      DELAY: 5
+    networks:
+      mqtt_network:   
+
+  hub:
+    container_name: hub
+    build: hub
+    depends_on:
+      - mqtt
+      - postgres_db
+    restart: always
+    environment:
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: 1883
+      MQTT_TOPIC: "agent"
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+      POSTGRES_HOST: postgres_db
+      POSTGRES_PORT: 5432
+      DELAY: 0.1
+    networks:
+      mqtt_network:  
+      
+  mqtt:
+    image: eclipse-mosquitto
+    container_name: mqtt
+    volumes:
+      - ./mosquitto:/mosquitto
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    ports:
+      - 1883:1883
+      - 9001:9001
+    networks:
+      mqtt_network:
+
+ 
+
+networks:
+  mqtt_network:
+
+volumes:
+  postgres_data:
+  pgadmin-data:
